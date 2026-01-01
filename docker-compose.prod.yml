@@ -1,0 +1,887 @@
+version: '3.8'
+
+services:
+  # PostgreSQL with Read Replicas
+  db_primary:
+    image: postgres:15-alpine
+    container_name: instagram_db_primary
+    volumes:
+      - postgres_primary_data:/var/lib/postgresql/data
+      - ./postgresql/postgresql.conf:/etc/postgresql/postgresql.conf
+      - ./postgresql/pg_hba.conf:/etc/postgresql/pg_hba.conf
+    environment:
+      - POSTGRES_DB=instagram_db
+      - POSTGRES_USER=instagram
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_REPLICATION_USER=replicator
+      - POSTGRES_REPLICATION_PASSWORD=${REPLICATION_PASSWORD}
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf
+    ports:
+      - "5432:5432"
+    networks:
+      - instagram_network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+
+  db_replica:
+    image: postgres:15-alpine
+    container_name: instagram_db_replica
+    volumes:
+      - postgres_replica_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=instagram_db
+      - POSTGRES_USER=instagram
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - PGUSER=replicator
+      - PGPASSWORD=${REPLICATION_PASSWORD}
+    command: |
+      bash -c "
+        until pg_basebackup --pgdata=/var/lib/postgresql/data -R --slot=replication_slot --host=db_primary --port=5432
+        do
+          echo 'Waiting for primary to connect...'
+          sleep 1s
+        done
+        echo 'Backup done, starting replica...'
+        chmod 0700 /var/lib/postgresql/data
+        postgres
+      "
+    depends_on:
+      - db_primary
+    networks:
+      - instagram_network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+
+  # Redis Cluster
+  redis_master:
+    image: redis:7-alpine
+    container_name: instagram_redis_master
+    command: redis-server /usr/local/etc/redis/redis.conf --appendonly yes
+    volumes:
+      - redis_master_data:/data
+      - ./redis/redis-master.conf:/usr/local/etc/redis/redis.conf
+    ports:
+      - "6379:6379"
+    networks:
+      - instagram_network
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G
+
+  redis_slave1:
+    image: redis:7-alpine
+    container_name: instagram_redis_slave1
+    command: redis-server /usr/local/etc/redis/redis.conf --slaveof redis_master 6379
+    volumes:
+      - redis_slave1_data:/data
+      - ./redis/redis-slave.conf:/usr/local/etc/redis/redis.conf
+    depends_on:
+      - redis_master
+    networks:
+      - instagram_network
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G
+
+  redis_slave2:
+    image: redis:7-alpine
+    container_name: instagram_redis_slave2
+    command: redis-server /usr/local/etc/redis/redis.conf --slaveof redis_master 6379
+    volumes:
+      - redis_slave2_data:/data
+      - ./redis/redis-slave.conf:/usr/local/etc/redis/redis.conf
+    depends_on:
+      - redis_master
+    networks:
+      - instagram_network
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G
+
+  redis_sentinel1:
+    image: redis:7-alpine
+    container_name: instagram_redis_sentinel1
+    command: redis-sentinel /usr/local/etc/redis/sentinel.conf
+    volumes:
+      - ./redis/sentinel.conf:/usr/local/etc/redis/sentinel.conf
+    depends_on:
+      - redis_master
+      - redis_slave1
+      - redis_slave2
+    networks:
+      - instagram_network
+
+  redis_sentinel2:
+    image: redis:7-alpine
+    container_name: instagram_redis_sentinel2
+    command: redis-sentinel /usr/local/etc/redis/sentinel.conf
+    volumes:
+      - ./redis/sentinel.conf:/usr/local/etc/redis/sentinel.conf
+    depends_on:
+      - redis_master
+      - redis_slave1
+      - redis_slave2
+    networks:
+      - instagram_network
+
+  redis_sentinel3:
+    image: redis:7-alpine
+    container_name: instagram_redis_sentinel3
+    command: redis-sentinel /usr/local/etc/redis/sentinel.conf
+    volumes:
+      - ./redis/sentinel.conf:/usr/local/etc/redis/sentinel.conf
+    depends_on:
+      - redis_master
+      - redis_slave1
+      - redis_slave2
+    networks:
+      - instagram_network
+
+  # Elasticsearch Cluster
+  elasticsearch1:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: instagram_es1
+    environment:
+      - node.name=es1
+      - cluster.name=instagram-cluster
+      - discovery.seed_hosts=elasticsearch2,elasticsearch3
+      - cluster.initial_master_nodes=es1,es2,es3
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
+      - xpack.security.enabled=false
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - elasticsearch1_data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    networks:
+      - instagram_network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+
+  elasticsearch2:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: instagram_es2
+    environment:
+      - node.name=es2
+      - cluster.name=instagram-cluster
+      - discovery.seed_hosts=elasticsearch1,elasticsearch3
+      - cluster.initial_master_nodes=es1,es2,es3
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
+      - xpack.security.enabled=false
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - elasticsearch2_data:/usr/share/elasticsearch/data
+    networks:
+      - instagram_network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+
+  elasticsearch3:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: instagram_es3
+    environment:
+      - node.name=es3
+      - cluster.name=instagram-cluster
+      - discovery.seed_hosts=elasticsearch1,elasticsearch2
+      - cluster.initial_master_nodes=es1,es2,es3
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
+      - xpack.security.enabled=false
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - elasticsearch3_data:/usr/share/elasticsearch/data
+    networks:
+      - instagram_network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+
+  # Kafka Cluster
+  zookeeper1:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: instagram_zookeeper1
+    environment:
+      ZOOKEEPER_SERVER_ID: 1
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_SERVERS: zookeeper1:2888:3888;zookeeper2:2888:3888;zookeeper3:2888:3888
+    volumes:
+      - zookeeper1_data:/var/lib/zookeeper/data
+      - zookeeper1_logs:/var/lib/zookeeper/log
+    networks:
+      - instagram_network
+
+  zookeeper2:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: instagram_zookeeper2
+    environment:
+      ZOOKEEPER_SERVER_ID: 2
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_SERVERS: zookeeper1:2888:3888;zookeeper2:2888:3888;zookeeper3:2888:3888
+    volumes:
+      - zookeeper2_data:/var/lib/zookeeper/data
+      - zookeeper2_logs:/var/lib/zookeeper/log
+    networks:
+      - instagram_network
+
+  zookeeper3:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: instagram_zookeeper3
+    environment:
+      ZOOKEEPER_SERVER_ID: 3
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_SERVERS: zookeeper1:2888:3888;zookeeper2:2888:3888;zookeeper3:2888:3888
+    volumes:
+      - zookeeper3_data:/var/lib/zookeeper/data
+      - zookeeper3_logs:/var/lib/zookeeper/log
+    networks:
+      - instagram_network
+
+  kafka1:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: instagram_kafka1
+    depends_on:
+      - zookeeper1
+      - zookeeper2
+      - zookeeper3
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper1:2181,zookeeper2:2181,zookeeper3:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka1:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_JMX_PORT: 9101
+      KAFKA_JMX_HOSTNAME: localhost
+    volumes:
+      - kafka1_data:/var/lib/kafka/data
+    networks:
+      - instagram_network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+
+  kafka2:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: instagram_kafka2
+    depends_on:
+      - zookeeper1
+      - zookeeper2
+      - zookeeper3
+    environment:
+      KAFKA_BROKER_ID: 2
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper1:2181,zookeeper2:2181,zookeeper3:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka2:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_JMX_PORT: 9101
+      KAFKA_JMX_HOSTNAME: localhost
+    volumes:
+      - kafka2_data:/var/lib/kafka/data
+    networks:
+      - instagram_network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+
+  kafka3:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: instagram_kafka3
+    depends_on:
+      - zookeeper1
+      - zookeeper2
+      - zookeeper3
+    environment:
+      KAFKA_BROKER_ID: 3
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper1:2181,zookeeper2:2181,zookeeper3:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka3:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_JMX_PORT: 9101
+      KAFKA_JMX_HOSTNAME: localhost
+    volumes:
+      - kafka3_data:/var/lib/kafka/data
+    networks:
+      - instagram_network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+
+  # Django Backend Instances (Multiple for Load Balancing)
+  backend1:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: instagram_backend1
+    command: gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 8 --threads 4 --worker-class gthread --max-requests 1000 --max-requests-jitter 50
+    volumes:
+      - static_volume:/app/staticfiles
+      - media_volume:/app/mediafiles
+    env_file:
+      - .env.prod
+    depends_on:
+      - db_primary
+      - redis_master
+      - elasticsearch1
+      - kafka1
+    networks:
+      - instagram_network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+      replicas: 1
+
+  backend2:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: instagram_backend2
+    command: gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 8 --threads 4 --worker-class gthread --max-requests 1000 --max-requests-jitter 50
+    volumes:
+      - static_volume:/app/staticfiles
+      - media_volume:/app/mediafiles
+    env_file:
+      - .env.prod
+    depends_on:
+      - db_primary
+      - redis_master
+      - elasticsearch1
+      - kafka1
+    networks:
+      - instagram_network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+      replicas: 1
+
+  backend3:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: instagram_backend3
+    command: gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 8 --threads 4 --worker-class gthread --max-requests 1000 --max-requests-jitter 50
+    volumes:
+      - static_volume:/app/staticfiles
+      - media_volume:/app/mediafiles
+    env_file:
+      - .env.prod
+    depends_on:
+      - db_primary
+      - redis_master
+      - elasticsearch1
+      - kafka1
+    networks:
+      - instagram_network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+      replicas: 1
+
+  backend4:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: instagram_backend4
+    command: gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 8 --threads 4 --worker-class gthread --max-requests 1000 --max-requests-jitter 50
+    volumes:
+      - static_volume:/app/staticfiles
+      - media_volume:/app/mediafiles
+    env_file:
+      - .env.prod
+    depends_on:
+      - db_primary
+      - redis_master
+      - elasticsearch1
+      - kafka1
+    networks:
+      - instagram_network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+      replicas: 1
+
+  backend5:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: instagram_backend5
+    command: gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 8 --threads 4 --worker-class gthread --max-requests 1000 --max-requests-jitter 50
+    volumes:
+      - static_volume:/app/staticfiles
+      - media_volume:/app/mediafiles
+    env_file:
+      - .env.prod
+    depends_on:
+      - db_primary
+      - redis_master
+      - elasticsearch1
+      - kafka1
+    networks:
+      - instagram_network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+      replicas: 1
+
+  # Celery Workers (Multiple instances)
+  celery_worker1:
+    build:
+      context: .
+      dockerfile: celery/Dockerfile
+    container_name: instagram_celery_worker1
+    command: celery -A config worker --loglevel=info --concurrency=8 --max-tasks-per-child=1000
+    volumes:
+      - ./backend:/app
+    env_file:
+      - .env.prod
+    depends_on:
+      - db_primary
+      - redis_master
+      - kafka1
+    networks:
+      - instagram_network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+
+  celery_worker2:
+    build:
+      context: .
+      dockerfile: celery/Dockerfile
+    container_name: instagram_celery_worker2
+    command: celery -A config worker --loglevel=info --concurrency=8 --max-tasks-per-child=1000
+    volumes:
+      - ./backend:/app
+    env_file:
+      - .env.prod
+    depends_on:
+      - db_primary
+      - redis_master
+      - kafka1
+    networks:
+      - instagram_network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+
+  celery_worker3:
+    build:
+      context: .
+      dockerfile: celery/Dockerfile
+    container_name: instagram_celery_worker3
+    command: celery -A config worker --loglevel=info --concurrency=8 --max-tasks-per-child=1000
+    volumes:
+      - ./backend:/app
+    env_file:
+      - .env.prod
+    depends_on:
+      - db_primary
+      - redis_master
+      - kafka1
+    networks:
+      - instagram_network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+
+  # Celery Beat
+  celery_beat:
+    build:
+      context: .
+      dockerfile: celery/Dockerfile
+    container_name: instagram_celery_beat
+    command: celery -A config beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    volumes:
+      - ./backend:/app
+    env_file:
+      - .env.prod
+    depends_on:
+      - db_primary
+      - redis_master
+    networks:
+      - instagram_network
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+
+  # Celery Flower
+  flower:
+    build:
+      context: .
+      dockerfile: celery/Dockerfile
+    container_name: instagram_flower
+    command: celery -A config flower --port=5555
+    ports:
+      - "5555:5555"
+    env_file:
+      - .env.prod
+    depends_on:
+      - redis_master
+      - celery_worker1
+    networks:
+      - instagram_network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  # Nginx Load Balancer
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: instagram_nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - static_volume:/app/staticfiles
+      - media_volume:/app/mediafiles
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/ssl:/etc/nginx/ssl
+    depends_on:
+      - backend1
+      - backend2
+      - backend3
+      - backend4
+      - backend5
+    networks:
+      - instagram_network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+
+  # HAProxy (Alternative to Nginx for advanced load balancing)
+  haproxy:
+    image: haproxy:2.8-alpine
+    container_name: instagram_haproxy
+    volumes:
+      - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    ports:
+      - "8080:80"
+      - "8443:443"
+      - "9000:9000"  # Stats page
+    depends_on:
+      - backend1
+      - backend2
+      - backend3
+      - backend4
+      - backend5
+    networks:
+      - instagram_network
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+
+  # Monitoring Stack
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: instagram_prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    networks:
+      - instagram_network
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: instagram_grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://localhost:3000
+      - GF_INSTALL_PLUGINS=redis-datasource
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    depends_on:
+      - prometheus
+    networks:
+      - instagram_network
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+
+  # Exporters for Prometheus
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: instagram_node_exporter
+    command:
+      - '--path.rootfs=/host'
+    pid: host
+    restart: unless-stopped
+    volumes:
+      - '/:/host:ro,rslave'
+    ports:
+      - "9100:9100"
+    networks:
+      - instagram_network
+
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: instagram_redis_exporter
+    environment:
+      - REDIS_ADDR=redis://redis_master:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    ports:
+      - "9121:9121"
+    depends_on:
+      - redis_master
+    networks:
+      - instagram_network
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: instagram_postgres_exporter
+    environment:
+      - DATA_SOURCE_NAME=postgresql://${DB_USER}:${DB_PASSWORD}@db_primary:5432/${DB_NAME}?sslmode=disable
+    ports:
+      - "9187:9187"
+    depends_on:
+      - db_primary
+    networks:
+      - instagram_network
+
+  nginx-exporter:
+    image: nginx/nginx-prometheus-exporter:latest
+    container_name: instagram_nginx_exporter
+    command:
+      - -nginx.scrape-uri=http://nginx:80/metrics
+    ports:
+      - "9113:9113"
+    depends_on:
+      - nginx
+    networks:
+      - instagram_network
+
+  # Logging Stack
+  elasticsearch_log:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: instagram_elasticsearch_log
+    environment:
+      - discovery.type=single-node
+      - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
+      - xpack.security.enabled=false
+    volumes:
+      - elasticsearch_log_data:/usr/share/elasticsearch/data
+    networks:
+      - instagram_network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.11.0
+    container_name: instagram_logstash
+    volumes:
+      - ./logstash/logstash.conf:/usr/share/logstash/pipeline/logstash.conf
+      - ./logstash/logstash.yml:/usr/share/logstash/config/logstash.yml
+    ports:
+      - "5044:5044"
+      - "9600:9600"
+    environment:
+      - "LS_JAVA_OPTS=-Xms512m -Xmx512m"
+    depends_on:
+      - elasticsearch_log
+    networks:
+      - instagram_network
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G
+
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.11.0
+    container_name: instagram_filebeat
+    user: root
+    volumes:
+      - ./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: filebeat -e -strict.perms=false
+    depends_on:
+      - logstash
+    networks:
+      - instagram_network
+
+  # Kibana for Log Visualization
+  kibana_log:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    container_name: instagram_kibana_log
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch_log:9200
+    ports:
+      - "5602:5601"
+    depends_on:
+      - elasticsearch_log
+    networks:
+      - instagram_network
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+
+  # Jaeger for Distributed Tracing
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: instagram_jaeger
+    environment:
+      - COLLECTOR_ZIPKIN_HOST_PORT=:9411
+    ports:
+      - "5775:5775/udp"
+      - "6831:6831/udp"
+      - "6832:6832/udp"
+      - "5778:5778"
+      - "16686:16686"
+      - "14268:14268"
+      - "14250:14250"
+      - "9411:9411"
+    networks:
+      - instagram_network
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+  # Alertmanager
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: instagram_alertmanager
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+      - alertmanager_data:/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    networks:
+      - instagram_network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+networks:
+  instagram_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16
+
+volumes:
+  postgres_primary_data:
+  postgres_replica_data:
+  redis_master_data:
+  redis_slave1_data:
+  redis_slave2_data:
+  elasticsearch1_data:
+  elasticsearch2_data:
+  elasticsearch3_data:
+  elasticsearch_log_data:
+  kafka1_data:
+  kafka2_data:
+  kafka3_data:
+  zookeeper1_data:
+  zookeeper1_logs:
+  zookeeper2_data:
+  zookeeper2_logs:
+  zookeeper3_data:
+  zookeeper3_logs:
+  static_volume:
+  media_volume:
+  prometheus_data:
+  grafana_data:
+  alertmanager_data:

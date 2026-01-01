@@ -1,0 +1,453 @@
+# ============================================
+# Instagram Clone - .gitignore
+# ============================================
+
+# ============================================
+# Python
+# ============================================
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+*.manifest
+*.spec
+
+# PyInstaller
+*.pyc
+__pycache__/
+*.pyo
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# poetry
+poetry.lock
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+
+.env.prod
+.env.local
+.env.*.local
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.envrc
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
+# ============================================
+# Django
+# ============================================
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Django static files
+/staticfiles/
+/static/
+/media/
+
+# Django migrations (keep initial migrations, ignore the rest)
+# Uncomment if you want to ignore all migrations
+# */migrations/*.py
+# !*/migrations/__init__.py
+
+# Django secret key
+secret.txt
+secrets.json
+
+# ============================================
+# Docker
+# ============================================
+docker-compose.override.yml
+.dockerignore
+
+# ============================================
+# Environment Variables
+# ============================================
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+.env.staging
+.env.prod
+.env.dev
+*.env
+.env.*
+!.env.example
+
+# ============================================
+# IDEs and Editors
+# ============================================
+
+# Visual Studio Code
+.vscode/
+*.code-workspace
+.history/
+
+# PyCharm
+.idea/
+*.iml
+*.iws
+*.ipr
+.idea_modules/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+.vim/
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# Eclipse
+.project
+.pydevproject
+.settings/
+
+# NetBeans
+nbproject/
+
+# JetBrains
+.idea/
+*.iml
+
+# ============================================
+# Operating Systems
+# ============================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.directory
+.Trash-*
+.nfs*
+
+# ============================================
+# Logs and Databases
+# ============================================
+*.log
+*.sql
+*.sqlite
+*.sqlite3
+logs/
+*.log.*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# ============================================
+# Media Files (Optional - Uncomment if needed)
+# ============================================
+# /media/
+# *.jpg
+# *.jpeg
+# *.png
+# *.gif
+# *.mp4
+# *.avi
+# *.mov
+# *.webm
+
+# ============================================
+# Backup Files
+# ============================================
+*.bak
+*.backup
+*.old
+*.orig
+*.save
+*.swp
+*.tmp
+*~
+\#*\#
+
+# ============================================
+# Node.js (if using frontend)
+# ============================================
+node_modules/
+npm-debug.log
+yarn-error.log
+.npm
+.eslintcache
+.node_repl_history
+*.tgz
+.yarn-integrity
+
+# ============================================
+# Redis
+# ============================================
+dump.rdb
+*.rdb
+
+# ============================================
+# PostgreSQL
+# ============================================
+*.sql
+*.dump
+*.backup
+
+# ============================================
+# Elasticsearch
+# ============================================
+elasticsearch/data/
+
+# ============================================
+# Docker Volumes & Data
+# ============================================
+postgres_data/
+redis_data/
+elasticsearch_data/
+kafka_data/
+zookeeper_data/
+zookeeper_logs/
+grafana_data/
+prometheus_data/
+static_volume/
+media_volume/
+
+# ============================================
+# Certificates & Keys
+# ============================================
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+ssl/
+certs/
+certificates/
+
+# ============================================
+# Temporary Files
+# ============================================
+tmp/
+temp/
+*.tmp
+*.temp
+.cache/
+
+# ============================================
+# Documentation Build
+# ============================================
+docs/_build/
+docs/.doctrees/
+sphinx-build/
+
+# ============================================
+# Test Coverage
+# ============================================
+htmlcov/
+.coverage
+.coverage.*
+coverage/
+*.cover
+
+# ============================================
+# Monitoring & Metrics
+# ============================================
+prometheus/data/
+grafana/data/
+
+# ============================================
+# Backups
+# ============================================
+backups/
+*.tar.gz
+*.zip
+*.7z
+
+# ============================================
+# Scripts Output
+# ============================================
+output/
+results/
+
+# ============================================
+# Custom Project Specific
+# ============================================
+
+# Configuration files with sensitive data
+config/local_settings.py
+config/production_settings.py
+
+# User uploaded media (if you want to ignore)
+# backend/media/
+
+# Collected static files
+backend/staticfiles/
+
+# Logs directory
+backend/logs/
+
+# Celery beat schedule
+backend/celerybeat-schedule.db
+
+# Migration backups
+backend/apps/*/migrations/*.pyc
+backend/apps/*/migrations/__pycache__/
+
+# Test files
+test_results/
+.tox/
+
+# Local development databases
+*.db
+*.sqlite
+
+# AWS credentials
+.aws/
+aws-credentials.json
+
+# Kubernetes secrets
+secrets/
+*.secret.yaml
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+
+# Ansible
+*.retry
+
+# ============================================
+# Keep These Files
+# ============================================
+!.gitkeep
+!.env.example
+!backend/apps/*/migrations/__init__.py
+!backend/apps/*/migrations/0001_initial.py
+
+# ============================================
+# Optional: Uncomment to ignore all migrations
+# except __init__.py
+# ============================================
+# backend/apps/*/migrations/*.py
+# !backend/apps/*/migrations/__init__.py

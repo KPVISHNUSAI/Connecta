@@ -1,0 +1,25 @@
+cluster.name: "instagram-cluster"
+network.host: 0.0.0.0
+
+# Minimum master nodes
+discovery.type: single-node
+
+# Memory
+bootstrap.memory_lock: true
+
+# Paths
+path.data: /usr/share/elasticsearch/data
+path.logs: /usr/share/elasticsearch/logs
+
+# Security
+xpack.security.enabled: false
+xpack.security.enrollment.enabled: false
+
+# HTTP
+http.port: 9200
+http.cors.enabled: true
+http.cors.allow-origin: "*"
+
+# Performance
+indices.memory.index_buffer_size: 30%
+indices.queries.cache.size: 10%

@@ -1,0 +1,389 @@
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    container_name: instagram_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=instagram_db
+      - POSTGRES_USER=instagram
+      - POSTGRES_PASSWORD=instagram_pass
+    ports:
+      - "5432:5432"
+    networks:
+      - instagram_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U instagram -d instagram_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  
+  
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: instagram_redis
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf
+    ports:
+      - "6379:6379"
+    networks:
+      - instagram_network
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Elasticsearch
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: instagram_elasticsearch
+    environment:
+      - discovery.type=single-node
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - xpack.security.enabled=false
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+      - ./elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    networks:
+      - instagram_network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Kibana
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    container_name: instagram_kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    networks:
+      - instagram_network
+    depends_on:
+      - elasticsearch
+
+  # Zookeeper (for Kafka)
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: instagram_zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - instagram_network
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_logs:/var/lib/zookeeper/log
+
+  # Kafka
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: instagram_kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    networks:
+      - instagram_network
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+
+  # Django Backend (Instance 1)
+  backend1:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    container_name: instagram_backend1
+    volumes:
+      - ./backend:/app
+      - static_volume:/app/staticfiles
+      - media_volume:/app/mediafiles
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - instagram_network
+    restart: unless-stopped
+
+  # Django Backend (Instance 2)
+  backend2:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    container_name: instagram_backend2
+    volumes:
+      - ./backend:/app
+      - static_volume:/app/staticfiles
+      - media_volume:/app/mediafiles
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - instagram_network
+    restart: unless-stopped
+
+  # Django Backend (Instance 3)
+  backend3:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    container_name: instagram_backend3
+    volumes:
+      - ./backend:/app
+      - static_volume:/app/staticfiles
+      - media_volume:/app/mediafiles
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - instagram_network
+    restart: unless-stopped
+
+  # Celery Worker
+  celery_worker:
+    build:
+      context: .
+      dockerfile: celery/Dockerfile
+    env_file:
+    - .env
+    container_name: instagram_celery_worker
+    command: celery -A config worker --loglevel=info --concurrency=4
+    volumes:
+      - ./backend:/app
+    environment:
+      - DATABASE_URL=postgresql://instagram:instagram_pass@db:5432/instagram_db
+      - REDIS_URL=redis://:MySecureRedisPassword123!@redis:6379/0
+      - CELERY_BROKER_URL=redis://:MySecureRedisPassword123!@redis:6379/1
+      - ELASTICSEARCH_HOST=elasticsearch:9200
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    depends_on:
+      - db
+      - redis
+      - kafka
+    networks:
+      - instagram_network
+
+  # Celery Beat
+  celery_beat:
+    build:
+      context: .
+      dockerfile: celery/Dockerfile
+    env_file:
+    - .env
+    container_name: instagram_celery_beat
+    command: celery -A config beat --loglevel=info
+    volumes:
+      - ./backend:/app
+    environment:
+      - DATABASE_URL=postgresql://instagram:instagram_pass@db:5432/instagram_db
+      - REDIS_URL=redis://:MySecureRedisPassword123!@redis:6379/0
+      - CELERY_BROKER_URL=redis://:MySecureRedisPassword123!@redis:6379/1
+    depends_on:
+      - db
+      - redis
+    networks:
+      - instagram_network
+
+  # Celery Flower (Monitoring)
+  flower:
+    build:
+      context: .
+      dockerfile: celery/Dockerfile
+    env_file:
+    - .env
+    container_name: instagram_flower
+    command: celery -A config flower --port=5555
+    ports:
+      - "5555:5555"
+    environment:
+      - CELERY_BROKER_URL=redis://:MySecureRedisPassword123!@redis:6379/1
+    depends_on:
+      - redis
+      - celery_worker
+    networks:
+      - instagram_network
+
+  # Nginx
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: instagram_nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - static_volume:/app/staticfiles
+      - media_volume:/app/mediafiles
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - backend1
+      - backend2
+      - backend3
+    networks:
+      - instagram_network
+
+  # Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: instagram_prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    ports:
+      - "9090:9090"
+    networks:
+      - instagram_network
+
+  # Grafana
+  grafana:
+    image: grafana/grafana:latest
+    container_name: instagram_grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - instagram_network
+
+  # Redis Exporter (for Prometheus)
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: instagram_redis_exporter
+    environment:
+      - REDIS_ADDR=redis://redis:6379
+      - REDIS_PASSWORD=MySecureRedisPassword123!
+    ports:
+      - "9121:9121"
+    depends_on:
+      - redis
+    networks:
+      - instagram_network
+
+  # Postgres Exporter (for Prometheus)
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: instagram_postgres_exporter
+    environment:
+      - DATA_SOURCE_NAME=postgresql://instagram:instagram_pass@db:5432/instagram_db?sslmode=disable
+    ports:
+      - "9187:9187"
+    depends_on:
+      - db
+    networks:
+      - instagram_network
+
+  # Migration service (runs once, then exits)
+  migrate:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: instagram_migrate
+    env_file:
+      - .env
+    entrypoint: ["bash"]  # Override entrypoint
+    command: >
+      -c "
+        echo 'Waiting for database...' &&
+        while ! nc -z db 5432; do sleep 1; done &&
+        echo '✅ Database ready' &&
+        echo 'Waiting for Redis...' &&
+        while ! nc -z redis 6379; do sleep 1; done &&
+        echo '✅ Redis ready' &&
+        echo '' &&
+        echo '🗄️  Running migrations...' &&
+        python manage.py migrate --noinput &&
+        echo '✅ Migrations complete!' &&
+        echo '' &&
+        echo '👤 Creating superuser...' &&
+        python manage.py shell -c \"from django.contrib.auth import get_user_model; User = get_user_model(); User.objects.filter(username='admin').exists() or User.objects.create_superuser('admin', 'admin@example.com', 'admin123')\" &&
+        echo '✅ Superuser setup complete' &&
+        echo '' &&
+        echo '📦 Collecting static files...' &&
+        python manage.py collectstatic --noinput --clear &&
+        echo '✅ All setup tasks complete!'
+      "
+    volumes:
+      - ./backend:/app
+      - static_volume:/app/staticfiles
+      - media_volume:/app/mediafiles
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - instagram_network
+    restart: "no"
+
+networks:
+  instagram_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  elasticsearch_data:
+  kafka_data:
+  zookeeper_data:
+  zookeeper_logs:
+  static_volume:
+  media_volume:
+  prometheus_data:
+  grafana_data:
