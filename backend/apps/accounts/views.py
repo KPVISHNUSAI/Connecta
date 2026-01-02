@@ -11,11 +11,12 @@ User = get_user_model()
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
+    permission_classes = [IsAuthenticated]
 
-    def get_permissions(self):
-        if self.action == 'create':
-            return [AllowAny()]
-        return [IsAuthenticated()]
+    # def get_permissions(self):
+    #     if self.action == 'create':
+    #         return [AllowAny()]
+    #     return [IsAuthenticated()]
 
     @action(detail=False, methods=['post'], permission_classes=[AllowAny])
     def register(self, request):
