@@ -5,6 +5,7 @@ from .models import Follow
 User = get_user_model()
 
 class UserSerializer(serializers.ModelSerializer):
+    profile_picture = serializers.SerializerMethodField()
     followers_count = serializers.SerializerMethodField()
     following_count = serializers.SerializerMethodField()
     posts_count = serializers.SerializerMethodField()
@@ -17,6 +18,12 @@ class UserSerializer(serializers.ModelSerializer):
                   'followers_count', 'following_count', 'posts_count', 
                   'is_following', 'created_at']
         read_only_fields = ['id', 'created_at']
+    
+    def get_profile_picture(self, obj):
+        if not obj.profile_picture:
+            return None
+        request = self.context.get('request')
+        return request.build_absolute_uri(obj.profile_picture.url) if request else obj.profile_picture.url
 
     def get_followers_count(self, obj):
         return obj.followers.count()

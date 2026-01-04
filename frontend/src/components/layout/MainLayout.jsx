@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom'
 import Header from './Header'
 import Sidebar from './Sidebar'
 import BottomNavigation from './BottomNavigation'
+import FloatingCreateButton from '@/components/common/FloatingCreateButton'
 
 const MainLayout = () => {
   return (
@@ -34,6 +35,7 @@ const MainLayout = () => {
 
       {/* Bottom Navigation - Mobile */}
       <BottomNavigation />
+      <FloatingCreateButton />
     </Box>
   )
 }

@@ -1,27 +1,21 @@
-import { Box, Container, Typography } from '@mui/material'
+import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+import CreatePostModal from '@/features/posts/components/create/CreatePostModal'
 
 const CreatePostPage = () => {
-  return (
-    <Container maxWidth="md">
-      <Box
-        sx={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          minHeight: 'calc(100vh - 100px)',
-          textAlign: 'center',
-        }}
-      >
-        <Typography variant="h3" gutterBottom>
-          ➕ Create Post
-        </Typography>
-        <Typography variant="body1" color="text.secondary">
-          Share your photos and videos with your followers.
-        </Typography>
-      </Box>
-    </Container>
-  )
+  const navigate = useNavigate()
+  const [open, setOpen] = useState(true)
+
+  const handleClose = () => {
+    setOpen(false)
+    navigate(-1) // Go back to previous page
+  }
+
+  useEffect(() => {
+    setOpen(true)
+  }, [])
+
+  return <CreatePostModal open={open} onClose={handleClose} />
 }
 
 export default CreatePostPage

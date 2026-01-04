@@ -3,10 +3,20 @@ from .models import Post, PostMedia, Like, SavedPost
 from apps.accounts.serializers import UserSerializer
 
 class PostMediaSerializer(serializers.ModelSerializer):
+    media_file = serializers.SerializerMethodField()
+
     class Meta:
         model = PostMedia
         fields = ['id', 'media_type', 'media_file', 'order', 'created_at']
         read_only_fields = ['id', 'created_at']
+
+    def get_media_file(self, obj):
+        if obj.media_file:
+            request = self.context.get('request')
+            if request is not None:
+                return request.build_absolute_uri(obj.media_file.url)
+            return obj.media_file.url
+        return None
 
 class PostSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
@@ -68,7 +78,7 @@ class PostCreateSerializer(serializers.ModelSerializer):
             PostMedia.objects.create(
                 post=post,
                 media_type=media_type,
-                file=file,
+                media_file=file,
                 order=index
             )
         return post

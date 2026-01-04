@@ -19,12 +19,32 @@ export const usersAPI = {
 }
 
 // Posts API (with mock data for development)
-const USE_MOCK_DATA = true // Set to false when backend is ready
+const USE_MOCK_DATA = false // Set to false when backend is ready
 
 export const postsAPI = {
   getPosts: (params) => apiClient.get(API_ENDPOINTS.POSTS, { params }),
   getPostById: (id) => apiClient.get(API_ENDPOINTS.POST_DETAIL(id)),
-  createPost: (data) => apiClient.post(API_ENDPOINTS.POSTS, data),
+  // createPost: (data) => apiClient.post(API_ENDPOINTS.POSTS, data),
+  createPost: (formData) => {
+    if (USE_MOCK_DATA) {
+      // Mock successful post creation
+      return new Promise((resolve) => {
+        setTimeout(() => {
+          resolve({
+            data: {
+              id: Date.now(),
+              message: 'Post created successfully',
+            },
+          })
+        }, 1500)
+      })
+    }
+    return apiClient.post(API_ENDPOINTS.POSTS, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    })
+  },
   updatePost: (id, data) => apiClient.patch(API_ENDPOINTS.POST_DETAIL(id), data),
   deletePost: (id) => apiClient.delete(API_ENDPOINTS.POST_DETAIL(id)),
   
